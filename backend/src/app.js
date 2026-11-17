@@ -3,6 +3,8 @@ const cookieParser = require('cookie-parser');
 const pool = require('./config/database');
 const errorHandler = require('./middleware/errorHandler');
 const authRoutes = require('./routes/authRoutes');
+const universityRoutes = require('./routes/universityRoutes');
+const platformAdminRoutes = require('./routes/platformAdminRoutes');
 const requireAuth = require('./middleware/requireAuth');
 const withIdentityContext = require('./utils/withIdentityContext');
 
@@ -13,6 +15,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use('/api/auth', authRoutes);
+app.use('/api/universities', universityRoutes);
+app.use('/api/platform-admins', platformAdminRoutes);
 
 // Welcome endpoint
 app.get('/', (req, res) => {
