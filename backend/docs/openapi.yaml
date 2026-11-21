@@ -1,0 +1,1088 @@
+openapi: 3.0.3
+
+info:
+  title: ClassConnect API
+  version: 1.0.0
+  description: |
+    REST API for the ClassConnect Web-Based Classroom Engagement
+    and Feedback System.
+
+    The platform supports multiple universities, user authentication,
+    university applications, student membership management and
+    platform administration.
+
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+
+tags:
+  - name: General
+    description: API information and health checks
+  - name: Authentication
+    description: Registration, login, email verification and sessions
+  - name: Universities
+    description: University applications and student membership
+  - name: Platform Administration
+    description: Platform administrator operations
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token returned by the login endpoint.
+
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: refreshToken
+      description: |
+        HTTP-only refresh-token cookie set by login and refresh.
+        The browser manages this cookie automatically.
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: Request validation failed.
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Operation completed successfully.
+
+    Pagination:
+      type: object
+      properties:
+        limit:
+          type: integer
+          example: 50
+        offset:
+          type: integer
+          example: 0
+
+    UUID:
+      type: string
+      format: uuid
+      example: 4eb87d05-8b3c-44e2-9027-2025b84fb4f4
+
+security: []
+
+paths:
+  /:
+    get:
+      tags:
+        - General
+      summary: Get API information
+      responses:
+        '200':
+          description: API information returned successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Classroom Engagement and Feedback System API
+                  version:
+                    type: string
+                    example: 1.0.0
+
+  /api/health:
+    get:
+      tags:
+        - General
+      summary: Check backend health
+      responses:
+        '200':
+          description: Backend is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  status:
+                    type: string
+                    example: healthy
+                  message:
+                    type: string
+                    example: Backend is running successfully
+
+  /api/health/database:
+    get:
+      tags:
+        - General
+      summary: Check database connectivity
+      responses:
+        '200':
+          description: Database connection is working.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  status:
+                    type: string
+                    example: connected
+                  message:
+                    type: string
+                    example: Database connection is working
+                  database:
+                    type: string
+                    example: classroom_engagement
+                  user:
+                    type: string
+                    example: classroom_admin
+                  checkedAt:
+                    type: string
+                    format: date-time
+        '503':
+          description: Database connection failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get authenticated identity
+      description: Returns the authenticated user's identity context.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Authenticated identity retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Authenticated identity retrieved successfully.
+                  user:
+                    type: object
+                    properties:
+                      user_id:
+                        $ref: '#/components/schemas/UUID'
+                      university_id:
+                        type: string
+                        format: uuid
+                        nullable: true
+        '401':
+          description: Authentication required or access token invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Creates an account that requires email verification before activation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fullName
+                - email
+                - password
+              properties:
+                fullName:
+                  type: string
+                  minLength: 2
+                  maxLength: 150
+                  example: Jane Doe
+                email:
+                  type: string
+                  format: email
+                  maxLength: 255
+                  example: jane@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 72
+                  pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9\s])(?=.*\S).+$'
+                  example: StrongPassword!23
+      responses:
+        '201':
+          description: Account created; email verification is required.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Account created. Email verification is required before activation.
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        type: object
+                        description: Newly created user details.
+        '400':
+          description: Invalid registration data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Account already exists or conflicts with existing data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Log in a user
+      description: |
+        Authenticates a user and returns an access token.
+        A refresh token is set separately as an HTTP-only cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: jane@example.com
+                password:
+                  type: string
+                  format: password
+                  example: StrongPassword!23
+      responses:
+        '200':
+          description: Login successful.
+          headers:
+            Set-Cookie:
+              description: HTTP-only refreshToken cookie.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Login successful.
+                  data:
+                    type: object
+                    properties:
+                      accessToken:
+                        type: string
+                        description: JWT access token.
+                      tokenType:
+                        type: string
+                        example: Bearer
+                      expiresIn:
+                        type: integer
+                        description: Access-token lifetime in seconds.
+                      user:
+                        type: object
+                        description: Authenticated user details.
+        '400':
+          description: Invalid login request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account is not permitted to log in.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh an authenticated session
+      description: Uses the refreshToken HTTP-only cookie to issue a new access token and rotate the refresh session.
+      security:
+        - refreshCookie: []
+      responses:
+        '200':
+          description: Session refreshed successfully.
+          headers:
+            Set-Cookie:
+              description: Updated HTTP-only refreshToken cookie.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Session refreshed successfully.
+                  data:
+                    type: object
+                    properties:
+                      accessToken:
+                        type: string
+                      tokenType:
+                        type: string
+                        example: Bearer
+                      expiresIn:
+                        type: integer
+        '401':
+          description: Refresh session is missing, invalid, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Log out a user
+      description: Revokes the refresh session and clears the refreshToken cookie.
+      security:
+        - refreshCookie: []
+      responses:
+        '200':
+          description: Logged out successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          description: Refresh session is invalid or unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/verify-email:
+    get:
+      tags:
+        - Authentication
+      summary: Display email verification page
+      description: Displays an HTML page containing a form to submit the verification token.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 64
+            maxLength: 64
+            pattern: '^[0-9a-f]{64}$'
+      responses:
+        '200':
+          description: HTML email verification page.
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: Invalid verification link.
+
+    post:
+      tags:
+        - Authentication
+      summary: Verify an email address
+      description: Verifies an account using the email verification token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  minLength: 64
+                  maxLength: 64
+                  pattern: '^[0-9a-f]{64}$'
+                  example: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      responses:
+        '200':
+          description: Email address verified successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid or expired verification link.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/resend-verification:
+    post:
+      tags:
+        - Authentication
+      summary: Resend an email verification link
+      description: Requests another verification email without revealing whether an account exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 255
+                  example: jane@example.com
+      responses:
+        '200':
+          description: Verification request processed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid email address.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/universities/applications:
+    post:
+      tags:
+        - Universities
+      summary: Submit a university application
+      description: Public endpoint for submitting a university registration application.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - institutionName
+                - representativeName
+                - representativeEmail
+                - proposedAdminName
+                - proposedAdminEmail
+              properties:
+                institutionName:
+                  type: string
+                  minLength: 2
+                  maxLength: 255
+                  example: Accra Technical University
+                website:
+                  type: string
+                  format: uri
+                  nullable: true
+                  example: https://atu.edu.gh
+                country:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                  default: Ghana
+                  example: Ghana
+                representativeName:
+                  type: string
+                  minLength: 2
+                  maxLength: 150
+                  example: Jane Mensah
+                representativeEmail:
+                  type: string
+                  format: email
+                  maxLength: 255
+                  example: representative@example.com
+                proposedAdminName:
+                  type: string
+                  minLength: 2
+                  maxLength: 150
+                  example: John Doe
+                proposedAdminEmail:
+                  type: string
+                  format: email
+                  maxLength: 255
+                  example: admin@example.com
+      responses:
+        '201':
+          description: University application submitted successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: University application submitted successfully. It is pending review.
+                  data:
+                    type: object
+                    properties:
+                      requestId:
+                        $ref: '#/components/schemas/UUID'
+                      status:
+                        type: string
+                        example: pending
+        '400':
+          description: Invalid application details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Application conflicts with existing data.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/platform-admins/university-applications:
+    get:
+      tags:
+        - Platform Administration
+      summary: List university applications
+      description: Returns university applications for Platform Admin review.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - pending
+              - under_review
+              - approved
+              - rejected
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Applications retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  applications:
+                    type: array
+                    items:
+                      type: object
+                      description: University application record.
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          description: Authentication required.
+        '403':
+          description: Platform Admin authorization required.
+
+  /api/platform-admins/university-applications/{requestId}/review:
+    patch:
+      tags:
+        - Platform Administration
+      summary: Mark an application under review
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reviewNotes:
+                  type: string
+                  maxLength: 2000
+                  nullable: true
+                  example: Institution details are being verified.
+      responses:
+        '200':
+          description: Application marked under review.
+        '400':
+          description: Invalid request data.
+        '401':
+          description: Authentication required.
+        '403':
+          description: Platform Admin authorization required.
+        '404':
+          description: University application not found.
+        '409':
+          description: Application is not in a state that permits review.
+
+  /api/platform-admins/university-applications/{requestId}/approve:
+    post:
+      tags:
+        - Platform Administration
+      summary: Approve a university application
+      description: Approval requires the proposed administrator to have an active account and verified matching email address.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reviewNotes:
+                  type: string
+                  maxLength: 2000
+                  nullable: true
+                  example: Institution details verified.
+      responses:
+        '200':
+          description: University application approved.
+        '400':
+          description: Invalid request data.
+        '401':
+          description: Authentication required.
+        '403':
+          description: Platform Admin authorization required.
+        '404':
+          description: University application not found.
+        '409':
+          description: Application cannot be approved in its current state or proposed administrator requirements are not satisfied.
+
+  /api/platform-admins/university-applications/{requestId}/reject:
+    post:
+      tags:
+        - Platform Administration
+      summary: Reject a university application
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reviewNotes
+              properties:
+                reviewNotes:
+                  type: string
+                  minLength: 5
+                  maxLength: 2000
+                  example: Institution registration details could not be verified.
+      responses:
+        '200':
+          description: University application rejected.
+        '400':
+          description: Invalid rejection reason or request data.
+        '401':
+          description: Authentication required.
+        '403':
+          description: Platform Admin authorization required.
+        '404':
+          description: University application not found.
+        '409':
+          description: Application cannot be rejected in its current state.
+
+  /api/universities/{universityId}/membership-requests:
+    post:
+      tags:
+        - Universities
+      summary: Submit a student membership request
+      description: |
+        Allows an authenticated user to request student membership
+        at an active university. Student membership and the student
+        role are granted only after University Admin approval.
+        A previously rejected membership can be submitted again.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: universityId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                studentId:
+                  type: string
+                  maxLength: 100
+                  nullable: true
+                  example: STU-001
+      responses:
+        '201':
+          description: Membership request submitted successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Student membership request submitted successfully.
+                  data:
+                    type: object
+                    description: Membership request details, including its identifier and status.
+        '400':
+          description: Invalid university ID or student ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication required.
+        '404':
+          description: University not found.
+        '409':
+          description: A request is already pending, membership is already active, or membership is suspended.
+
+    get:
+      tags:
+        - Universities
+      summary: List pending student membership requests
+      description: Returns pending membership requests for University Admin review.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: universityId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Pending membership requests retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      requests:
+                        type: array
+                        items:
+                          type: object
+                          description: Pending membership request and student details.
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+        '401':
+          description: Authentication required.
+        '403':
+          description: University Admin authorization required.
+        '404':
+          description: University not found.
+
+  /api/universities/{universityId}/membership-requests/me:
+    get:
+      tags:
+        - Universities
+      summary: Get own student membership status
+      description: |
+        Returns the authenticated user's membership status at the
+        specified university. Returns not_submitted when no request
+        or membership record exists.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: universityId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Membership status retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    description: The user's membership status and relevant membership details.
+        '401':
+          description: Authentication required.
+        '404':
+          description: University not found.
+
+  /api/universities/{universityId}/membership-requests/{requestId}/approve:
+    post:
+      tags:
+        - Universities
+      summary: Approve a student membership request
+      description: |
+        Allows a University Admin to approve a pending request.
+        Approval activates university membership and assigns the
+        student role.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: universityId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+        - name: requestId
+          in: path
+          required: true
+          description: Membership record ID.
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Student membership request approved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          description: Authentication required.
+        '403':
+          description: University Admin authorization required.
+        '404':
+          description: Membership request not found.
+        '409':
+          description: Request is not pending or the student account cannot be approved.
+
+  /api/universities/{universityId}/membership-requests/{requestId}/reject:
+    post:
+      tags:
+        - Universities
+      summary: Reject a student membership request
+      description: |
+        Allows a University Admin to reject a pending request.
+        The membership is deactivated, the rejection reason is
+        recorded in the audit log, and no student role is assigned.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: universityId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+        - name: requestId
+          in: path
+          required: true
+          description: Membership record ID.
+          schema:
+            $ref: '#/components/schemas/UUID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rejectionReason
+              properties:
+                rejectionReason:
+                  type: string
+                  minLength: 5
+                  maxLength: 5000
+                  example: Student identification details could not be verified.
+      responses:
+        '200':
+          description: Student membership request rejected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Rejection reason is missing or invalid.
+        '401':
+          description: Authentication required.
+        '403':
+          description: University Admin authorization required.
+        '404':
+          description: Membership request not found.
+        '409':
+          description: Request is not pending.
+
+  /api/platform-admins:
+    post:
+      tags:
+        - Platform Administration
+      summary: Appoint a Platform Admin
+      description: Allows an existing Platform Admin to appoint another user as a Platform Admin.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+              properties:
+                userId:
+                  $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Platform Admin appointment completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid user ID.
+        '401':
+          description: Authentication required.
+        '403':
+          description: Platform Admin authorization required.
+        '404':
+          description: User not found.
+        '409':
+          description: User cannot be appointed or already has an active appointment.
+
+  /api/platform-admins/{assignmentId}:
+    delete:
+      tags:
+        - Platform Administration
+      summary: Revoke a Platform Admin appointment
+      description: Revokes an existing Platform Admin role assignment. The last active Platform Admin cannot be revoked.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assignmentId
+          in: path
+          required: true
+          description: Platform Admin role assignment ID.
+          schema:
+            $ref: '#/components/schemas/UUID'
+      responses:
+        '200':
+          description: Platform Admin appointment revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid assignment ID.
+        '401':
+          description: Authentication required.
+        '403':
+          description: Platform Admin authorization required.
+        '404':
+          description: Assignment not found.
+        '409':
+          description: The last active Platform Admin cannot be revoked or the assignment is already inactive.

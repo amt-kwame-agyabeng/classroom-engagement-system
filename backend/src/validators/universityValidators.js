@@ -86,6 +86,59 @@ const universityApplicationSchema = Joi.object({
         })
 });
 
+// Platform Admin: list university applications
+const listUniversityApplicationsSchema = Joi.object({
+    status: Joi.string()
+        .valid('pending', 'under_review', 'approved', 'rejected')
+        .optional(),
+
+    limit: Joi.number()
+        .integer()
+        .min(1)
+        .max(100)
+        .default(50),
+
+    offset: Joi.number()
+        .integer()
+        .min(0)
+        .default(0)
+});
+
+// Validate application UUID in route parameters
+const universityApplicationParamsSchema = Joi.object({
+    requestId: Joi.string()
+        .guid({ version: ['uuidv4', 'uuidv5'] })
+        .required()
+});
+
+// Optional review notes
+const universityApplicationReviewSchema = Joi.object({
+    reviewNotes: Joi.string()
+        .trim()
+        .max(2000)
+        .allow('', null)
+        .optional()
+});
+
+// Rejection requires a reason
+const universityApplicationRejectionSchema = Joi.object({
+    reviewNotes: Joi.string()
+        .trim()
+        .min(5)
+        .max(2000)
+        .required()
+        .messages({
+            'string.empty': 'A rejection reason is required',
+            'string.min': 'Rejection reason must be at least 5 characters',
+            'string.max': 'Rejection reason cannot exceed 2000 characters',
+            'any.required': 'A rejection reason is required'
+        })
+});
+
 module.exports = {
-    universityApplicationSchema
+    universityApplicationSchema,
+    listUniversityApplicationsSchema,
+    universityApplicationParamsSchema,
+    universityApplicationReviewSchema,
+    universityApplicationRejectionSchema
 };

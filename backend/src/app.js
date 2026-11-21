@@ -1,4 +1,8 @@
 const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const YAML = require('yaml');
+const fs = require('fs');
+const path = require('path');
 const cookieParser = require('cookie-parser');
 const pool = require('./config/database');
 const errorHandler = require('./middleware/errorHandler');
@@ -10,10 +14,18 @@ const withIdentityContext = require('./utils/withIdentityContext');
 
 
 
+const openApiDocument = YAML.parse(
+    fs.readFileSync(path.join(__dirname, '../docs/openapi.yaml'), 'utf8')
+);
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
+app.use(
+    '/api-docs',
+    swaggerUi.serve,
+    swaggerUi.setup(openApiDocument)
+);
 app.use('/api/auth', authRoutes);
 app.use('/api/universities', universityRoutes);
 app.use('/api/platform-admins', platformAdminRoutes);
