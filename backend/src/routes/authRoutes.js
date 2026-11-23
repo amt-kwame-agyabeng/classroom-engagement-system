@@ -2,12 +2,16 @@
 const express = require('express');
 
 const resendRateLimiter = require('../middleware/resendRateLimiter');
+const passwordResetRateLimiter = require('../middleware/passwordResetRateLimiter');
+
 const {
     register,
     login,
     verifyEmailAddress,
     verifyEmailFromLink,
     resendVerification,
+    forgotPassword,
+    resetPassword,
     refresh,
     logout
 } = require('../controllers/authController');
@@ -19,7 +23,9 @@ const {
     registerSchema,
     loginSchema,
     verifyEmailSchema,
-    resendVerificationSchema
+    resendVerificationSchema,
+    forgotPasswordSchema,
+    resetPasswordSchema
 
 } = require('../validators/authValidators');
 
@@ -60,6 +66,21 @@ router.post(
     resendRateLimiter,
     validateRequest(resendVerificationSchema),
     resendVerification
+);
+
+// Request a password reset email
+router.post(
+    '/forgot-password',
+    passwordResetRateLimiter,
+    validateRequest(forgotPasswordSchema),
+    forgotPassword
+);
+
+// Complete password reset
+router.post(
+    '/reset-password',
+    validateRequest(resetPasswordSchema),
+    resetPassword
 );
 
 module.exports = router;

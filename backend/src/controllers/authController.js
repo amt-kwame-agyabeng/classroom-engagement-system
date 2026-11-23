@@ -2,6 +2,8 @@ const {
     registerUser,
     verifyEmail,
     resendVerificationEmail,
+    requestPasswordReset,
+    completePasswordReset,  
     loginUser,
     refreshUserSession,
     logoutUser,
@@ -190,6 +192,43 @@ const resendVerification = async (req, res, next) => {
     }
 };
 
+const forgotPassword = async (req, res, next) => {
+    try {
+        const { email } = req.body;
+
+        await requestPasswordReset(email);
+
+        return res.status(200).json({
+            success: true,
+            message: 'If an eligible account exists with that email, password reset instructions will be sent.'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const resetPassword = async (req, res, next) => {
+    try {
+        const { token, password } = req.body;
+
+        const completed = await completePasswordReset(token, password);
+
+        if (!completed) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid or expired password reset link.'
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Password reset successfully. Please log in again.'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 
 const verifyEmailFromLink = (req, res) => {
     const { token } = req.query;
@@ -240,5 +279,7 @@ module.exports = {
     logout,
     verifyEmailAddress,
     verifyEmailFromLink,
-    resendVerification
+    resendVerification,
+    forgotPassword,
+    resetPassword
 };

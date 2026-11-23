@@ -89,9 +89,51 @@ const loginSchema = Joi.object({
         })
 });
 
+const forgotPasswordSchema = Joi.object({
+    email: Joi.string()
+        .trim()
+        .lowercase()
+        .email()
+        .max(255)
+        .required()
+        .messages({
+            'string.empty': 'Email is required',
+            'string.email': 'Please provide a valid email address',
+            'any.required': 'Email is required'
+        })
+});
+
+const resetPasswordSchema = Joi.object({
+    token: Joi.string()
+        .length(64)
+        .pattern(/^[0-9a-f]{64}$/)
+        .required()
+        .messages({
+            'string.length': 'Reset token must be 64 characters',
+            'string.pattern.base': 'Invalid reset token format',
+            'any.required': 'Reset token is required'
+        }),
+
+    password: Joi.string()
+        .min(8)
+        .max(72)
+        .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9\s])(?=.*\S).+$/)
+        .required()
+        .messages({
+            'string.min': 'Password must be at least 8 characters',
+            'string.max': 'Password cannot exceed 72 characters',
+            'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, and one special character',
+            'any.required': 'Password is required'
+        })
+});
+
 module.exports = {
     registerSchema,
     verifyEmailSchema,
     resendVerificationSchema,
-    loginSchema
+    loginSchema,
+    forgotPasswordSchema,
+    resetPasswordSchema
+
+    
 };

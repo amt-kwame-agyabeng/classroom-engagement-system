@@ -235,6 +235,89 @@ const durationToMilliseconds = (duration) => {
     return value * units[match[2]];
 };
 
+const requestPasswordReset = async (email) => {
+    // Generate a cryptographically secure reset token.
+    const resetToken = crypto.randomBytes(32).toString('hex');
+
+    // Store only the SHA-256 hash in PostgreSQL.
+    const tokenHash = crypto
+        .createHash('sha256')
+        .update(resetToken)
+        .digest('hex');
+
+    // Reset links expire after 30 minutes.
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    // Ask PostgreSQL to find the account and create the reset token.
+    const result = await pool.query(
+        `SELECT *
+         FROM app_private.create_password_reset_token($1, $2, $3)`,
+        [email, tokenHash, expiresAt]
+    );
+
+    // Do not reveal whether the email belongs to an account.
+    if (result.rows.length === 0) {
+        return;
+    }
+
+    const { recipient_email } = result.rows[0];
+
+    const resetLink =
+        `${process.env.APP_BASE_URL}/reset-password?token=${resetToken}`;
+
+    // Send the password-reset email.
+    await sendEmail({
+        to: recipient_email,
+        subject: 'Reset your Classroom Engagement System password',
+        textContent: `Hello,
+
+We received a request to reset your password.
+
+Use the link below to choose a new password:
+
+${resetLink}
+
+This link expires in 30 minutes and can only be used once.
+
+If you did not request this password reset, you can ignore this email.
+
+Your existing sessions will be signed out after a successful password reset.`,
+        htmlContent: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+                <h2>Password Reset</h2>
+                <p>We received a request to reset your password.</p>
+                <p>
+                    <a href="${resetLink}">
+                        Reset Password
+                    </a>
+                </p>
+                <p>This link expires in 30 minutes and can only be used once.</p>
+                <p>If you did not request this, you can ignore this email.</p>
+            </div>
+        `
+    });
+};
+
+const completePasswordReset = async (token, newPassword) => {
+    // Hash the raw reset token before looking it up in PostgreSQL.
+    const tokenHash = crypto
+        .createHash('sha256')
+        .update(token)
+        .digest('hex');
+
+    // Hash the new password using the same cost factor as registration.
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    // PostgreSQL validates and consumes the token, updates the password,
+    // revokes existing sessions, and records the audit event.
+    const result = await pool.query(
+        `SELECT app_private.complete_password_reset($1, $2) AS completed`,
+        [tokenHash, passwordHash]
+    );
+
+    return result.rows[0]?.completed === true;
+};
+
 const loginUser = async ({ email, password, ipAddress, userAgent }) => {
     // Generate a cryptographically secure refresh token.
     const refreshToken = crypto.randomBytes(32).toString('hex');
@@ -402,6 +485,8 @@ module.exports = {
     registerUser,
     verifyEmail,
     resendVerificationEmail,
+    requestPasswordReset,
+    completePasswordReset,
     loginUser,
     refreshUserSession,
     logoutUser
